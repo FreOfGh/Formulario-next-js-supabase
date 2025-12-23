@@ -5,12 +5,26 @@ import {
   XCircle, FileDown, Users, Search, Filter 
 } from "lucide-react";
 import * as XLSX from "xlsx";
+// 1. Definición de la estructura
+interface Registro {
+  id: number;           // Identificador único (timestamp)
+  nombre: string;
+  apellido: string;
+  email: string;
+  telefono: string;
+  diocesis: string;
+  entidadSalud: string;
+  segmentacion: "sacerdote" | "seminarista" | "laico"; // Solo permite estos valores
+  hospedaje: "si" | "no";
+  rutaImagen: string;   // La URL local: /uploads/imagen.jpg
+  fechaRegistro: string;
+  motivoRechazo?: string; // El '?' significa que es opcional (solo existe si fue rechazado)
+}
 
 type TabType = "pendientes" | "aprobados" | "rechazados";
 
 export default function AdminPanel() {
-  const [registros, setRegistros] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [registros, setRegistros] = useState<Registro[]>([]);  const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<TabType>("pendientes");
   const [selectedImg, setSelectedImg] = useState<string | null>(null);
   const [idParaRechazar, setIdParaRechazar] = useState<number | null>(null);

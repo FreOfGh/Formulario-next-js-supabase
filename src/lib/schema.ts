@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-const MAX_FILE_SIZE = 5000000; // 5MB
+const MAX_FILE_SIZE = 5000000;
 const ACCEPTED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
 
 export const contactSchema = z.object({
@@ -10,15 +10,19 @@ export const contactSchema = z.object({
   telefono: z.string().min(7, "Número de teléfono inválido"),
   diocesis: z.string().min(2, "La Diócesis es obligatoria"),
   entidadSalud: z.string().min(2, "La entidad de salud es obligatoria"),
-  segmentacion: z.enum(["sacerdote", "seminarista", "laico"], {
-    errorMap: () => ({ message: "Selecciona una opción válida" }),
+  
+  // SOLUCIÓN: Definimos el enum y aplicamos el mensaje de error con .refine o quitando el objeto
+  segmentacion: z.string().refine((val) => ["sacerdote", "seminarista", "laico"].includes(val), {
+    message: "Selecciona una opción válida",
   }),
-  hospedaje: z.enum(["si", "no"], {
-    errorMap: () => ({ message: "Selecciona una opción" }),
+
+  hospedaje: z.string().refine((val) => ["si", "no"].includes(val), {
+    message: "Selecciona una opción",
   }),
+
   imagen: z
     .any()
-    .refine((files) => files?.length == 1, "La imagen de la consignación es obligatoria")
+    .refine((files) => files?.length === 1, "La foto es obligatoria")
     .refine((files) => files?.[0]?.size <= MAX_FILE_SIZE, "Máximo 5MB")
     .refine(
       (files) => ACCEPTED_IMAGE_TYPES.includes(files?.[0]?.type),
