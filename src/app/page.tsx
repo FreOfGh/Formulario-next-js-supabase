@@ -120,7 +120,7 @@ export default function InscripcionForm() {
 
           {/* Zona de Carga de Imagen Dinámica */}
           <div className="md:col-span-2 space-y-3">
-            <label className="text-sm font-bold text-slate-700">Fotografía de Identificación</label>
+            <label className="text-sm font-bold text-slate-700">Imagen constancia consignación</label>
             <div className={`relative border-2 border-dashed rounded-[2rem] transition-all duration-300 group overflow-hidden ${preview ? 'border-indigo-500 bg-indigo-50' : 'border-slate-200 hover:border-indigo-400 bg-slate-50'}`}>
               <input type="file" {...register("imagen")} className="absolute inset-0 opacity-0 cursor-pointer z-10" accept="image/*" />
               
