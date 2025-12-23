@@ -59,8 +59,8 @@ export default function InscripcionForm() {
         {/* Cabecera Estilizada */}
         <div className="bg-gradient-to-r from-indigo-600 to-purple-600 p-10 text-white relative">
           <Sparkles className="absolute top-6 right-8 opacity-30 animate-bounce" />
-          <h2 className="text-4xl font-black tracking-tight mb-2">Inscripción General</h2>
-          <p className="text-indigo-100 font-medium tracking-wide">Únete a nuestra comunidad. Completa tu perfil debajo.</p>
+          <h2 className="text-4xl font-black tracking-tight mb-2">Inscripción General hospedaje</h2>
+          <p className="text-indigo-100 font-medium tracking-wide">Únete a la experiencia espiritual.</p>
         </div>
 
         <form onSubmit={handleSubmit(onSubmit)} className="p-8 md:p-12 grid grid-cols-1 md:grid-cols-2 gap-8">
