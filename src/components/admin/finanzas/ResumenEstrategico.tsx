@@ -29,7 +29,7 @@ export default function ResumenEstrategico() {
         // 1. Obtener el Evento Activo
         const { data: evento, error: evError } = await supabase
           .from('eventos')
-          .select('id, nombre, fecha_inicio, meta_recaudo')
+          .select('id, nombre, fecha_inicio, meta_recaudacion')
           .eq('esta_activo', true)
           .maybeSingle();
 
@@ -65,7 +65,7 @@ export default function ResumenEstrategico() {
         setStats({
           recaudado: totalRecaudado,
           inscritos: numInscritos,
-          metaTotal: evento.meta_recaudo || 10000000, // Fallback si no hay meta definida
+          metaTotal: evento.meta_recaudacion || 10000000, // Fallback si no hay meta definida
           diasRestantes: diasRestantes > 0 ? diasRestantes : 0,
           ticketPromedio: numInscritos > 0 ? Math.round(totalRecaudado / numInscritos) : 0,
           inscritosHoy,
