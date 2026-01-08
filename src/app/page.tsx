@@ -100,7 +100,7 @@ export default function InscripcionPage() {
       const { imagen, entidadSalud, ...rest } = data;
       const { error } = await supabase.from('inscripciones').insert([{
         ...rest,
-        eps: entidadSalud,
+        entidadSalud: entidadSalud,
         evento_id: eventoActivo.id,
         imagen_url: imageUrl,
         precio_pactado: resumen.total,
