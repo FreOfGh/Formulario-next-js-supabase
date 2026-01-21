@@ -20,7 +20,7 @@ import CrearEvento from "@/components/admin/eventos/CrearEvento";
 import ConfiguracionGlobal from "@/components/admin/eventos/ConfiguracionGlobal";
 
 export default function GestionEventosPage() {
-  const [activeTab, setActiveTab] = useState("lista");
+  const [activeTab, setActiveTab] = useState("resumen");
   const [loading, setLoading] = useState(false);
 
   // Menú lateral siguiendo exactamente tu estilo
@@ -28,7 +28,6 @@ export default function GestionEventosPage() {
     { id: "resumen", label: "Vista General", icon: BarChart3 },
     { id: "lista", label: "Todos los Eventos", icon: Layers },
     { id: "crear", label: "Nuevo Evento", icon: PlusCircle },
-    { id: "config", label: "Ajustes Maestros", icon: Settings2 },
   ];
 
   return (
@@ -91,7 +90,6 @@ export default function GestionEventosPage() {
               {activeTab === "resumen" && <ResumenEventos />}
               {activeTab === "lista" && <ListaEventos />}
               {activeTab === "crear" && <CrearEvento onSuccess={() => setActiveTab("lista")} />}
-              {activeTab === "config" && <ConfiguracionGlobal dataToBackup={[]} />}
            </div>
         </main>
       </div>

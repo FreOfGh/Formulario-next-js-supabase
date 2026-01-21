@@ -1,223 +1,342 @@
 "use client";
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import { createClient } from "@/utils/supabase/clients";
 import { 
-  FileSpreadsheet, FileText, Table as TableIcon, 
-  Download, FileCheck, Loader2, Sparkles, ShieldCheck
+  PieChart as PieChartIcon, Map, Wallet, FileText, 
+  Download, Filter, ChevronDown, TrendingUp, Users, 
+  Landmark, AlertCircle, Calendar, Loader2, FileSpreadsheet,
+  AlertTriangle 
 } from "lucide-react";
+import { 
+  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, 
+  ResponsiveContainer, BarChart, Bar, Cell, PieChart, Pie, Legend 
+} from "recharts";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 
-interface ExportarProps {
-  data: any[];
-  nombreEvento?: string;
-}
+export default function CentroAnalisisAvanzado() {
+  const supabase = createClient();
+  const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<'resumen' | 'demografia' | 'finanzas' | 'exportar'>('resumen');
+  const [data, setData] = useState<any>(null);
+  const [evento, setEvento] = useState<any>(null);
 
-export default function ExportarReportes({ data = [], nombreEvento = "SANTA HELENA" }: ExportarProps) {
-  const [loading, setLoading] = useState<string | null>(null);
+  useEffect(() => {
+    async function loadDeepAnalytics() {
+      setLoading(true);
+      try {
+        // 1. Obtener Evento Activo
+        const { data: ev } = await supabase
+          .from('eventos')
+          .select('*')
+          .eq('esta_activo', true)
+          .maybeSingle();
 
-  // --- LÓGICA: EXPORTAR EXCEL (XLSX) ---
-  const handleExcel = () => {
-    setLoading('excel');
-    try {
-      const preparedData = data.map(i => ({
-        "FECHA REGISTRO": new Date(i.created_at).toLocaleDateString(),
-        "NOMBRES Y APELLIDOS": i.nombre_completo?.toUpperCase() || "SIN NOMBRE",
-        "DOCUMENTO": i.documento || "N/A",
-        "CELULAR": i.celular || "N/A",
-        "PERFIL": i.tipos_persona?.nombre?.toUpperCase() || "ESTÁNDAR",
-        "SEDE/CIUDAD": i.sedes?.nombre?.toUpperCase() || "N/A",
-        "ESTADO PAGO": i.estado_pago?.toUpperCase() || "PENDIENTE",
-        "MÉTODO": i.metodo_pago?.toUpperCase() || "N/A",
-        "VALOR PAGADO": i.monto_pagado || 0,
-        "DESCUENTO": i.valor_descuento || 0
-      }));
-
-      const ws = XLSX.utils.json_to_sheet(preparedData);
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, "Inscritos_Oficial");
-      
-      // Ajuste automático de columnas (opcional pero profesional)
-      ws['!cols'] = [{ wch: 15 }, { wch: 30 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 12 }, { wch: 10 }];
-
-      XLSX.writeFile(wb, `${nombreEvento.replace(/\s/g, '_')}_REPORTE_${Date.now()}.xlsx`);
-    } catch (error) {
-      console.error("Error Excel:", error);
-    } finally {
-      setLoading(null);
-    }
-  };
-
-  // --- LÓGICA: EXPORTAR PDF (JS-PDF) ---
-  const handlePDF = () => {
-    setLoading('pdf');
-    try {
-      const doc = new jsPDF();
-      const timestamp = new Date().toLocaleString();
-
-      // Membrete Estilo Premium
-      doc.setFillColor(15, 23, 42); // Slate-900
-      doc.rect(0, 0, 210, 40, 'F');
-      
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(22);
-      doc.setTextColor(255, 255, 255);
-      doc.text(nombreEvento.toUpperCase(), 14, 20);
-      
-      doc.setFontSize(8);
-      doc.setFont("helvetica", "normal");
-      doc.setTextColor(200, 200, 200);
-      doc.text(`REPORTE OFICIAL DE INSCRITOS | GENERADO: ${timestamp}`, 14, 30);
-
-      const rows = data.map(i => [
-        new Date(i.created_at).toLocaleDateString(),
-        i.nombre_completo?.toUpperCase() || "N/A",
-        i.tipos_persona?.nombre?.substring(0, 15) || "N/A",
-        `$${Number(i.monto_pagado || 0).toLocaleString()}`,
-        i.estado_pago?.toUpperCase() || "PENDIENTE"
-      ]);
-
-      autoTable(doc, {
-        startY: 50,
-        head: [['Fecha', 'Participante', 'Perfil', 'Monto', 'Estado']],
-        body: rows,
-        theme: 'striped',
-        headStyles: { 
-          fillColor: [79, 70, 229], // Indigo-600
-          fontSize: 9, 
-          fontStyle: 'bold',
-          halign: 'center' 
-        },
-        styles: { fontSize: 8, cellPadding: 4, font: "helvetica" },
-        columnStyles: {
-          3: { halign: 'right' },
-          4: { halign: 'center' }
+        if (!ev) { 
+          // Si no hay evento, paramos aquí
+          setLoading(false); 
+          return; 
         }
-      });
+        setEvento(ev);
 
-      // Pie de página
-      const pageCount = (doc as any).internal.getNumberOfPages();
-      for (let i = 1; i <= pageCount; i++) {
-        doc.setPage(i);
-        doc.setFontSize(8);
-        doc.setTextColor(150);
-        doc.text(`Página ${i} de ${pageCount} - Documento de uso interno administrativo`, 14, 285);
+        // 2. Obtener TODA la data cruda
+        const { data: inscripciones, error } = await supabase
+          .from('inscripciones')
+          .select(`
+            *,
+            tipos_persona (nombre, valor),
+            jurisdicciones (nombre)
+          `)
+          .eq('evento_id', ev.id);
+
+        if (error) throw error;
+
+        // 3. Procesar datos (Si no hay inscripciones, enviamos array vacío)
+        const safeInscripciones = inscripciones || [];
+        const stats = processData(safeInscripciones);
+        setData({ raw: safeInscripciones, stats });
+
+      } catch (err) {
+        console.error("Error crítico en analítica:", err);
+      } finally {
+        setLoading(false);
       }
-
-      doc.save(`${nombreEvento}_PDF_${Date.now()}.pdf`);
-    } catch (error) {
-      console.error("Error PDF:", error);
-    } finally {
-      setLoading(null);
     }
+    loadDeepAnalytics();
+  }, []);
+
+  const processData = (rows: any[]) => {
+    // A. Finanzas
+    const totalRecaudado = rows.filter(r => r.estado === 'aprobado').reduce((acc, curr) => acc + (Number(curr.precio_pactado) || 0), 0);
+    const totalPendiente = rows.filter(r => r.estado === 'pendiente').reduce((acc, curr) => acc + (Number(curr.precio_pactado) || 0), 0);
+    
+    // B. Demografía (Roles)
+    const rolesCount = rows.reduce((acc: any, curr) => {
+      const rol = curr.tipos_persona?.nombre || "General";
+      acc[rol] = (acc[rol] || 0) + 1;
+      return acc;
+    }, {});
+    const chartRoles = Object.keys(rolesCount).map(k => ({ name: k, value: rolesCount[k] }));
+
+    // C. Geografía (Top 10)
+    const dioCount = rows.reduce((acc: any, curr) => {
+      const d = curr.diocesis || "Sin Asignar";
+      acc[d] = (acc[d] || 0) + 1;
+      return acc;
+    }, {});
+    const chartDio = Object.keys(dioCount)
+      .map(k => ({ name: k, value: dioCount[k] }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 10);
+
+    // D. Línea de Tiempo
+    const timeMap = rows.reduce((acc: any, curr) => {
+      const date = new Date(curr.created_at).toLocaleDateString('es-CO', { month: 'short', day: 'numeric' });
+      acc[date] = (acc[date] || 0) + 1;
+      return acc;
+    }, {});
+    const chartTime = Object.keys(timeMap).map(k => ({ fecha: k, cantidad: timeMap[k] }));
+
+    return { totalRecaudado, totalPendiente, chartRoles, chartDio, chartTime, total: rows.length };
   };
+
+  const handleExportExcel = () => {
+    if (!data?.raw || !evento) return;
+    const wsData = data.raw.map((i: any) => ({
+      "Fecha": new Date(i.created_at).toLocaleDateString(),
+      "Nombre": i.nombre,
+      "Apellido": i.apellido,
+      "Documento": i.documento,
+      "Email": i.email,
+      "Rol": i.tipos_persona?.nombre,
+      "Diócesis": i.diocesis,
+      "Estado": i.estado,
+      "Pago Pactado": i.precio_pactado
+    }));
+
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet(wsData);
+    XLSX.utils.book_append_sheet(wb, ws, "Base Maestra");
+    XLSX.writeFile(wb, `Reporte_${evento.slug}_${Date.now()}.xlsx`);
+  };
+
+  // --- RENDERS CONDICIONALES (Protecciones) ---
+
+  if (loading) {
+    return (
+      <div className="h-96 flex flex-col items-center justify-center bg-slate-50 rounded-[3rem] border border-dashed border-slate-200">
+        <Loader2 className="animate-spin text-indigo-600 mb-4" size={40} />
+        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Procesando Big Data...</p>
+      </div>
+    );
+  }
+
+  // 1. Si no hay evento activo
+  if (!evento) {
+    return (
+      <div className="p-12 text-center bg-slate-50 rounded-[3rem] border border-slate-100">
+        <div className="w-16 h-16 bg-slate-200 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-400">
+          <AlertCircle size={32} />
+        </div>
+        <h3 className="text-lg font-black text-slate-700">Sin Contexto Activo</h3>
+        <p className="text-slate-500 text-sm mt-2">Activa un evento en la configuración para ver el análisis.</p>
+      </div>
+    );
+  }
+
+  // 2. LA CORRECCIÓN CLAVE: Si cargó, hay evento, pero data es null (posible error de red)
+  if (!data || !data.stats) {
+    return (
+      <div className="p-12 text-center bg-rose-50 rounded-[3rem] border border-rose-100">
+        <div className="w-16 h-16 bg-rose-200 rounded-full flex items-center justify-center mx-auto mb-4 text-rose-600">
+          <AlertTriangle size={32} />
+        </div>
+        <h3 className="text-lg font-black text-rose-900">Error de Datos</h3>
+        <p className="text-rose-700 text-sm mt-2">No se pudieron calcular las estadísticas. Intenta recargar.</p>
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-10 animate-in fade-in duration-700">
-      {/* HEADER DE SECCIÓN */}
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+    <div className="space-y-8 animate-in fade-in duration-700">
+      {/* HEADER */}
+      <div className="flex flex-col md:flex-row justify-between items-end gap-6 border-b border-slate-200 pb-8">
         <div>
-          <div className="flex items-center gap-2 mb-2">
-            <Sparkles size={14} className="text-amber-500" />
-            <span className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">Data Center</span>
-          </div>
-          <h2 className="text-4xl font-black text-slate-900 uppercase italic tracking-tighter leading-none">
-            Exportar Inteligencia
+          <h2 className="text-4xl font-black text-slate-900 uppercase italic tracking-tighter">
+            Centro de <span className="text-indigo-600">Inteligencia</span>
           </h2>
-          <p className="text-slate-500 text-sm mt-2 font-medium">Genera reportes legales y contables en segundos.</p>
-        </div>
-      </div>
-
-      {/* GRID DE OPCIONES */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-        <ReportCard 
-          title="Libro Contable (XLSX)" 
-          desc="Estructura completa de datos para auditorías avanzadas y filtros en Excel."
-          icon={<FileSpreadsheet size={32} className="text-emerald-500" />}
-          onExport={handleExcel}
-          loading={loading === 'excel'}
-          color="hover:border-emerald-200"
-        />
-        <ReportCard 
-          title="Documento Oficial (PDF)" 
-          desc="Reporte visual con membrete diseñado para juntas y presentaciones oficiales."
-          icon={<FileText size={32} className="text-rose-500" />}
-          onExport={handlePDF}
-          loading={loading === 'pdf'}
-          color="hover:border-rose-200"
-        />
-        <ReportCard 
-          title="Base Plana (CSV)" 
-          desc="Formato de texto ligero optimizado para migración a otros software de CRM."
-          icon={<TableIcon size={32} className="text-slate-500" />}
-          onExport={handleExcel} // Reusamos lógica de Excel pero con CSV si fuera necesario
-          loading={loading === 'csv'}
-          color="hover:border-slate-300"
-        />
-      </div>
-
-      {/* BANNER DE CONCILIACIÓN */}
-      <div className="bg-slate-900 rounded-[3.5rem] p-10 text-white relative overflow-hidden group">
-        <div className="relative z-10 flex flex-col lg:flex-row items-center gap-8">
-            <div className="w-24 h-24 bg-white/10 rounded-[2rem] flex items-center justify-center backdrop-blur-xl border border-white/10 shadow-2xl group-hover:scale-110 transition-transform duration-500">
-                <ShieldCheck size={48} className="text-indigo-400" />
-            </div>
-            <div className="flex-1 text-center lg:text-left">
-                <div className="inline-flex items-center gap-2 px-3 py-1 bg-indigo-500/20 rounded-full mb-3 border border-indigo-500/30">
-                    <div className="w-1.5 h-1.5 bg-indigo-400 rounded-full animate-pulse" />
-                    <span className="text-[10px] font-black uppercase tracking-widest text-indigo-300">Algoritmo de Seguridad</span>
-                </div>
-                <h4 className="text-2xl font-black italic uppercase tracking-tight">Conciliación Bancaria</h4>
-                <p className="text-slate-400 text-sm mt-2 max-w-xl leading-relaxed">
-                    Este sistema cruza los ingresos reales contra los perfiles de descuento asignados. Detecta automáticamente si alguien pagó de menos según su rol seleccionado.
-                </p>
-            </div>
-            <button 
-                onClick={handleExcel}
-                className="bg-white text-slate-900 font-black px-10 py-5 rounded-2xl hover:bg-indigo-50 active:scale-95 transition-all uppercase text-xs tracking-widest flex items-center gap-3 shadow-xl shadow-white/5"
-            >
-                {loading === 'excel' ? <Loader2 className="animate-spin" size={18} /> : <Download size={18} strokeWidth={3} />}
-                Generar Auditoría
-            </button>
+          <p className="text-slate-500 font-medium mt-2">
+            Analítica para: <span className="text-slate-900 font-bold">{evento.nombre}</span>
+          </p>
         </div>
         
-        {/* Decoraciones de fondo */}
-        <div className="absolute -right-20 -bottom-20 w-80 h-80 bg-indigo-600/10 rounded-full blur-[100px] pointer-events-none" />
-        <div className="absolute -left-20 -top-20 w-80 h-80 bg-blue-600/10 rounded-full blur-[100px] pointer-events-none" />
+        {/* NAVEGACIÓN DE TABS */}
+        <div className="flex flex-wrap gap-2 bg-slate-100 p-1 rounded-2xl">
+          {[
+            { id: 'resumen', icon: <TrendingUp size={16} />, label: 'Global' },
+            { id: 'demografia', icon: <Users size={16} />, label: 'Perfiles' },
+            { id: 'finanzas', icon: <Wallet size={16} />, label: 'Caja' },
+            { id: 'exportar', icon: <Download size={16} />, label: 'Data' },
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id as any)}
+              className={`px-4 py-3 rounded-xl text-[10px] font-black uppercase tracking-wide flex items-center gap-2 transition-all ${
+                activeTab === tab.id 
+                  ? 'bg-white text-indigo-600 shadow-sm' 
+                  : 'text-slate-400 hover:text-slate-600'
+              }`}
+            >
+              {tab.icon} {tab.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* --- CONTENIDO --- */}
+      
+      {activeTab === 'resumen' && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          <div className="col-span-1 lg:col-span-2 grid grid-cols-1 md:grid-cols-3 gap-6">
+            <KpiCard title="Total Inscritos" value={data.stats.total} icon={<Users className="text-white" />} color="bg-slate-900 text-white" />
+            <KpiCard title="Recaudo Real" value={`$${data.stats.totalRecaudado.toLocaleString()}`} icon={<Wallet className="text-white" />} color="bg-emerald-500 text-white" />
+            <KpiCard title="Por Cobrar" value={`$${data.stats.totalPendiente.toLocaleString()}`} icon={<AlertCircle className="text-slate-900" />} color="bg-amber-400 text-slate-900" />
+          </div>
+
+          <div className="col-span-1 lg:col-span-2 bg-white p-8 rounded-[3rem] border border-slate-100 shadow-xl">
+            <h3 className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-6">Curva de Inscripciones</h3>
+            <div className="h-[300px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={data.stats.chartTime}>
+                  <defs>
+                    <linearGradient id="colorInsc" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3}/>
+                      <stop offset="95%" stopColor="#6366f1" stopOpacity={0}/>
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                  <XAxis dataKey="fecha" axisLine={false} tickLine={false} tick={{fontSize: 10, fontWeight: 700}} />
+                  <RechartsTooltip contentStyle={{borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)'}} />
+                  <Area type="monotone" dataKey="cantidad" stroke="#6366f1" strokeWidth={3} fill="url(#colorInsc)" />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'demografia' && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          <div className="bg-white p-8 rounded-[3rem] border border-slate-100 shadow-lg">
+            <h3 className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-4">Roles</h3>
+            <div className="h-[300px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie data={data.stats.chartRoles} innerRadius={60} outerRadius={100} paddingAngle={2} dataKey="value">
+                    {data.stats.chartRoles.map((entry: any, index: number) => (
+                      <Cell key={`cell-${index}`} fill={['#6366f1', '#a855f7', '#ec4899', '#14b8a6'][index % 4]} />
+                    ))}
+                  </Pie>
+                  <RechartsTooltip />
+                  <Legend verticalAlign="bottom" height={36} iconType="circle" wrapperStyle={{fontSize: '10px', fontWeight: 700}} />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          <div className="bg-white p-8 rounded-[3rem] border border-slate-100 shadow-lg">
+            <h3 className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-4">Top Jurisdicciones</h3>
+            <div className="h-[300px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={data.stats.chartDio} layout="vertical" margin={{ left: 10 }}>
+                  <XAxis type="number" hide />
+                  <YAxis dataKey="name" type="category" width={100} tick={{fontSize: 9, fontWeight: 700}} axisLine={false} tickLine={false} />
+                  <RechartsTooltip cursor={{fill: '#f8fafc'}} />
+                  <Bar dataKey="value" fill="#334155" radius={[0, 8, 8, 0]} barSize={15}>
+                    {data.stats.chartDio.map((entry: any, index: number) => (
+                       <Cell key={`cell-${index}`} fill={index === 0 ? '#6366f1' : '#cbd5e1'} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'finanzas' && (
+        <div className="bg-white p-10 rounded-[3rem] border border-slate-100 shadow-xl">
+           <div className="flex items-center gap-4 mb-8">
+             <div className="p-3 bg-emerald-100 text-emerald-600 rounded-2xl"><DollarSignIcon size={24} /></div>
+             <div>
+               <h3 className="text-2xl font-black text-slate-900">Salud Financiera</h3>
+               <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest">Flujo de Caja vs Potencial</p>
+             </div>
+           </div>
+           
+           <div className="h-[300px]">
+             <ResponsiveContainer width="100%" height="100%">
+               <BarChart data={[
+                 { name: 'En Banco', valor: data.stats.totalRecaudado, color: '#10b981' },
+                 { name: 'Pendiente', valor: data.stats.totalPendiente, color: '#f59e0b' },
+                 { name: 'Total', valor: data.stats.totalRecaudado + data.stats.totalPendiente, color: '#6366f1' }
+               ]}>
+                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                 <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fontSize: 11, fontWeight: 800}} />
+                 <YAxis tickFormatter={(val) => `$${val/1000000}M`} axisLine={false} tickLine={false} tick={{fontSize: 10}} />
+                 <RechartsTooltip formatter={(val: number | undefined) => val !== undefined ? `$${val.toLocaleString()}` : '$0'} cursor={{fill: 'transparent'}} contentStyle={{borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)'}} />
+                 <Bar dataKey="valor" radius={[12, 12, 0, 0]} barSize={50}>
+                    { [0,1,2].map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={['#10b981', '#f59e0b', '#6366f1'][index]} />
+                    ))}
+                 </Bar>
+               </BarChart>
+             </ResponsiveContainer>
+           </div>
+        </div>
+      )}
+
+      {activeTab === 'exportar' && (
+        <div className="bg-slate-900 rounded-[3rem] p-12 text-white relative overflow-hidden">
+          <div className="relative z-10 grid grid-cols-1 md:grid-cols-2 gap-12 items-center">
+            <div>
+              <div className="w-16 h-16 bg-white/10 rounded-2xl flex items-center justify-center mb-6 backdrop-blur-md">
+                <FileSpreadsheet className="text-indigo-300" size={32} />
+              </div>
+              <h3 className="text-3xl font-black italic uppercase">Descarga Maestra</h3>
+              <p className="text-slate-400 mt-4 leading-relaxed max-w-md text-sm">
+                Genera un archivo Excel (.xlsx) compatible con sistemas contables. Incluye ID de transacción, fecha, monto pactado y estado de conciliación.
+              </p>
+            </div>
+            <div className="flex flex-col gap-4">
+              <button onClick={handleExportExcel} className="w-full bg-white text-slate-900 font-black py-6 rounded-2xl hover:bg-indigo-50 transition-all flex items-center justify-center gap-3 uppercase text-xs tracking-widest shadow-xl">
+                <Download size={18} strokeWidth={3} /> Generar Excel Oficial
+              </button>
+            </div>
+          </div>
+          <div className="absolute -right-20 -bottom-40 w-96 h-96 bg-indigo-500/20 rounded-full blur-[100px]" />
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Subcomponente KPI simple
+function KpiCard({ title, value, icon, color }: any) {
+  return (
+    <div className={`p-6 rounded-[2.5rem] shadow-lg ${color} flex items-center justify-between`}>
+      <div>
+        <p className="text-[9px] font-black uppercase tracking-[0.2em] opacity-80 mb-2">{title}</p>
+        <h4 className="text-2xl font-black italic">{value}</h4>
+      </div>
+      <div className="p-3 bg-white/20 rounded-2xl backdrop-blur-sm">
+        {icon}
       </div>
     </div>
   );
 }
 
-// --- SUB-COMPONENTE: CARD DE REPORTE ---
-function ReportCard({ title, desc, icon, onExport, loading, color }: any) {
-  return (
-    <div className={`bg-white p-10 rounded-[3rem] border border-slate-100 shadow-sm transition-all duration-500 group flex flex-col h-full ${color}`}>
-      <div className="w-20 h-20 bg-slate-50 rounded-[1.8rem] flex items-center justify-center mb-8 group-hover:scale-110 group-hover:rotate-3 transition-all duration-500 shadow-inner">
-        {icon}
-      </div>
-      <div className="flex-1">
-        <h3 className="font-black text-slate-900 uppercase italic text-lg tracking-tighter leading-none mb-3">
-            {title}
-        </h3>
-        <p className="text-[11px] font-bold text-slate-400 uppercase leading-relaxed tracking-tight">
-            {desc}
-        </p>
-      </div>
-      <button 
-        disabled={loading}
-        onClick={onExport}
-        className="w-full mt-10 flex items-center justify-center gap-3 bg-slate-900 text-white font-black py-5 rounded-[1.5rem] text-[10px] uppercase tracking-[0.2em] hover:bg-indigo-600 hover:shadow-xl hover:shadow-indigo-100 transition-all active:scale-[0.98] disabled:opacity-50"
-      >
-        {loading ? (
-            <Loader2 className="animate-spin" size={18}/> 
-        ) : (
-            <>
-                <Download size={18} strokeWidth={3}/> 
-                Descargar Archivo
-            </>
-        )}
-      </button>
-    </div>
-  );
+function DollarSignIcon(props: any) {
+    return <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" x2="12" y1="2" y2="22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
 }

@@ -1,184 +1,214 @@
 "use client";
-import React, { useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
+import { createClient } from "@/utils/supabase/clients";
 import { 
-  FileSpreadsheet, FileText, Table as TableIcon, 
-  Download, Loader2, Sparkles, ShieldCheck 
+  TrendingUp, Target, Zap, AlertTriangle, 
+  ArrowUpRight, PieChart as PieIcon, Activity,
+  Calendar, CheckCircle2, Loader2, DollarSign
 } from "lucide-react";
-import * as XLSX from "xlsx";
-import jsPDF from "jspdf";
-import autoTable from "jspdf-autotable";
+import { 
+  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, 
+  ResponsiveContainer, PieChart, Pie, Cell, Legend 
+} from "recharts";
 
-interface ExportarProps {
-  data: any[];
-  nombreEvento?: string;
-}
+export default function AnalisisMetaFinanciera() {
+  const supabase = createClient();
+  const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState<any>(null);
 
-export default function ExportarReportes({ data = [], nombreEvento = "EVENTO OFICIAL" }: ExportarProps) {
-  const [loading, setLoading] = useState<string | null>(null);
-
-  // --- LÓGICA: EXCEL ---
-  const handleExcel = () => {
-    setLoading('excel');
-    try {
-      const preparedData = data.map(i => ({
-        "FECHA REGISTRO": i.created_at ? new Date(i.created_at).toLocaleDateString() : 'N/A',
-        "PARTICIPANTE": `${i.nombre} ${i.apellido}`.toUpperCase(),
-        "EMAIL": i.email,
-        "JURISDICCIÓN": i.jurisdicciones?.nombre?.toUpperCase() || "N/A",
-        "ESTADO": i.estado?.toUpperCase() || "PENDIENTE",
-        "MONTO PAGO": i.monto_pago || 0,
-        "SEGMENTACIÓN": i.segmentacion || "N/A"
-      }));
-
-      const ws = XLSX.utils.json_to_sheet(preparedData);
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, "Reporte_Inscritos");
+  useEffect(() => {
+    async function loadFinanzas() {
+      setLoading(true);
+      const { data: evento } = await supabase.from('eventos').select('*').eq('esta_activo', true).single();
       
-      // Auto-ancho de columnas
-      ws['!cols'] = [{ wch: 15 }, { wch: 30 }, { wch: 25 }, { wch: 20 }, { wch: 12 }, { wch: 12 }, { wch: 15 }];
+      if (evento) {
+        const [config, inscripciones] = await Promise.all([
+          supabase.from('configuracion_evento').select('*').eq('evento_id', evento.id).single(),
+          supabase.from('inscripciones').select('estado, precio_pactado, created_at').eq('evento_id', evento.id)
+        ]);
 
-      XLSX.writeFile(wb, `REPORTE_${nombreEvento.replace(/\s/g, '_')}_${Date.now()}.xlsx`);
-    } catch (error) {
-      console.error("Error Excel:", error);
-    } finally {
-      setLoading(null);
+        const totalInscritos = inscripciones.data?.length || 0;
+        const metaRecaudo = Number(config.data?.meta_financiera_objetivo) || 50000000; // Meta por defecto si no existe
+        
+        const aprobado = inscripciones.data?.filter(i => i.estado === 'aprobado') || [];
+        const pendiente = inscripciones.data?.filter(i => i.estado === 'pendiente') || [];
+        
+        const recaudoReal = aprobado.reduce((acc, curr) => acc + (curr.precio_pactado || 0), 0);
+        const recaudoProyectado = pendiente.reduce((acc, curr) => acc + (curr.precio_pactado || 0), 0);
+        
+        setStats({
+          evento,
+          metaRecaudo,
+          recaudoReal,
+          recaudoProyectado,
+          totalInscritos,
+          faltanteMeta: Math.max(0, metaRecaudo - recaudoReal),
+          porcentajeLogrado: (recaudoReal / metaRecaudo) * 100,
+          dataGrafico: procesarDataHistorica(inscripciones.data || [])
+        });
+      }
+      setLoading(false);
     }
+    loadFinanzas();
+  }, []);
+
+  // Procesa inscripciones para ver crecimiento en el tiempo
+  const procesarDataHistorica = (data: any[]) => {
+    const grupos = data.reduce((acc: any, curr) => {
+      const fecha = new Date(curr.created_at).toLocaleDateString('es-ES', { day: '2-digit', month: 'short' });
+      acc[fecha] = (acc[fecha] || 0) + (curr.precio_pactado || 0);
+      return acc;
+    }, {});
+    return Object.keys(grupos).map(k => ({ fecha: k, monto: grupos[k] }));
   };
 
-  // --- LÓGICA: PDF ---
-  const handlePDF = () => {
-    setLoading('pdf');
-    try {
-      const doc = new jsPDF();
-      const timestamp = new Date().toLocaleString();
+  const pieData = useMemo(() => [
+    { name: 'Recaudado', value: stats?.recaudoReal, color: '#6366f1' },
+    { name: 'Pendiente', value: stats?.recaudoProyectado, color: '#f59e0b' },
+    { name: 'Por Alcanzar', value: stats?.faltanteMeta, color: '#e2e8f0' },
+  ], [stats]);
 
-      // Membrete Premium
-      doc.setFillColor(15, 23, 42); // Slate-900
-      doc.rect(0, 0, 210, 40, 'F');
-      
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(22);
-      doc.setTextColor(255, 255, 255);
-      doc.text(nombreEvento.toUpperCase(), 14, 20);
-      
-      doc.setFontSize(8);
-      doc.setFont("helvetica", "normal");
-      doc.setTextColor(200, 200, 200);
-      doc.text(`REPORTE DE AUDITORÍA | GENERADO: ${timestamp}`, 14, 30);
-
-      const rows = data.map(i => [
-        i.created_at ? new Date(i.created_at).toLocaleDateString() : 'N/A',
-        `${i.nombre} ${i.apellido}`.toUpperCase(),
-        i.jurisdicciones?.nombre || "N/A",
-        `$${Number(i.monto_pago || 0).toLocaleString()}`,
-        i.estado?.toUpperCase() || "PENDIENTE"
-      ]);
-
-      autoTable(doc, {
-        startY: 50,
-        head: [['Fecha', 'Participante', 'Sede', 'Monto', 'Estado']],
-        body: rows,
-        theme: 'striped',
-        headStyles: { fillColor: [79, 70, 229], fontSize: 9, halign: 'center' },
-        styles: { fontSize: 8, font: "helvetica" },
-      });
-
-      doc.save(`PDF_${nombreEvento}_${Date.now()}.pdf`);
-    } catch (error) {
-      console.error("Error PDF:", error);
-    } finally {
-      setLoading(null);
-    }
-  };
+  if (loading) return <div className="h-96 flex items-center justify-center"><Loader2 className="animate-spin text-indigo-600" size={40} /></div>;
+  if (!stats) return null;
 
   return (
-    <div className="space-y-10 animate-in fade-in duration-700">
-      {/* HEADER */}
-      <div className="px-2">
-        <div className="flex items-center gap-2 mb-2">
-          <Sparkles size={14} className="text-amber-500" />
-          <span className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">Inteligencia de Datos</span>
+    <div className="space-y-8 animate-in fade-in duration-700">
+      
+      {/* SECCIÓN 1: EL VELOCÍMETRO DE LA META */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+        <div className="lg:col-span-7 bg-white p-10 rounded-[3.5rem] border border-slate-100 shadow-xl relative overflow-hidden">
+          <div className="relative z-10">
+            <div className="flex items-center gap-2 mb-6">
+              <Target className="text-indigo-600" size={20} />
+              <span className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">Progreso hacia la Meta</span>
+            </div>
+            
+            <div className="flex flex-col md:flex-row items-center gap-10">
+              <div className="w-full md:w-1/2 h-[250px] relative">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={pieData}
+                      innerRadius={80}
+                      outerRadius={100}
+                      paddingAngle={5}
+                      dataKey="value"
+                    >
+                      {pieData.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.color} />)}
+                    </Pie>
+                    <Tooltip />
+                  </PieChart>
+                </ResponsiveContainer>
+                <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                  <span className="text-4xl font-black italic text-slate-900">{stats.porcentajeLogrado.toFixed(1)}%</span>
+                  <span className="text-[10px] font-black text-indigo-500 uppercase">Completado</span>
+                </div>
+              </div>
+
+              <div className="w-full md:w-1/2 space-y-6">
+                <div>
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Faltante para Meta</p>
+                  <h3 className="text-4xl font-black text-rose-500 italic">${stats.faltanteMeta.toLocaleString()}</h3>
+                </div>
+                <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                  <div className="flex justify-between text-[10px] font-black uppercase text-slate-500 mb-2">
+                    <span>Meta Total</span>
+                    <span>${stats.metaRecaudo.toLocaleString()}</span>
+                  </div>
+                  <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden">
+                    <div className="bg-indigo-600 h-full transition-all duration-1000" style={{ width: `${stats.porcentajeLogrado}%` }} />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
-        <h2 className="text-4xl font-black text-slate-900 uppercase italic tracking-tighter leading-none">
-          Exportar Reportes
-        </h2>
-        <p className="text-slate-500 text-sm mt-2 font-medium italic">Genera documentos oficiales y bases de datos conciliadas.</p>
+
+        {/* MÉTRICAS RÁPIDAS */}
+        <div className="lg:col-span-5 grid grid-cols-1 gap-6">
+          <div className="bg-slate-900 p-8 rounded-[3rem] text-white flex items-center justify-between group">
+            <div>
+              <p className="text-[10px] font-black text-indigo-400 uppercase tracking-[0.2em] mb-2">Ingreso Proyectado</p>
+              <h4 className="text-3xl font-black italic">${(stats.recaudoReal + stats.recaudoProyectado).toLocaleString()}</h4>
+              <p className="text-[10px] text-slate-400 mt-2 font-bold uppercase">Cifra si se aprueban todos los pendientes</p>
+            </div>
+            <Activity className="text-indigo-500/30 group-hover:text-indigo-400 transition-colors" size={60} />
+          </div>
+
+          <div className="bg-indigo-600 p-8 rounded-[3rem] text-white flex items-center justify-between">
+            <div>
+              <p className="text-[10px] font-black text-indigo-200 uppercase tracking-[0.2em] mb-2">Inscritos Activos</p>
+              <h4 className="text-4xl font-black italic">{stats.totalInscritos}</h4>
+              <p className="text-[10px] text-indigo-100 mt-2 font-bold uppercase flex items-center gap-1">
+                <CheckCircle2 size={12} /> Comunidad Registrada
+              </p>
+            </div>
+            <Users2 className="text-white/20" size={60} />
+          </div>
+        </div>
       </div>
 
-      {/* GRID */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-        <ReportCard 
-          title="Libro Contable (XLSX)" 
-          desc="Estructura completa para auditorías y filtros avanzados en Excel."
-          icon={<FileSpreadsheet size={32} className="text-emerald-500" />}
-          onExport={handleExcel}
-          loading={loading === 'excel'}
-          color="hover:border-emerald-200"
-        />
-        <ReportCard 
-          title="Documento Oficial (PDF)" 
-          desc="Reporte visual con membrete diseñado para juntas directivas."
-          icon={<FileText size={32} className="text-rose-500" />}
-          onExport={handlePDF}
-          loading={loading === 'pdf'}
-          color="hover:border-rose-200"
-        />
-        <ReportCard 
-          title="Base Plana (CSV)" 
-          desc="Formato ligero optimizado para migración a software contable."
-          icon={<TableIcon size={32} className="text-slate-500" />}
-          onExport={handleExcel}
-          loading={loading === 'csv'}
-          color="hover:border-slate-300"
-        />
+      {/* SECCIÓN 2: GRÁFICO DE CRECIMIENTO TEMPORAL */}
+      <div className="bg-white p-10 rounded-[3.5rem] border border-slate-100 shadow-sm">
+        <div className="flex items-center justify-between mb-10">
+          <div>
+            <h3 className="text-[11px] font-black uppercase text-slate-400 tracking-[0.3em] mb-1">Ritmo de Ingresos</h3>
+            <p className="text-xl font-black text-slate-900 italic">Flujo de Caja Diario</p>
+          </div>
+          <div className="flex gap-2">
+            <div className="px-4 py-2 bg-slate-50 rounded-xl border border-slate-100 text-[10px] font-black text-slate-500 uppercase">
+              Últimos Registros
+            </div>
+          </div>
+        </div>
+        
+        <div className="h-[300px]">
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={stats.dataGrafico}>
+              <defs>
+                <linearGradient id="colorMonto" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3}/>
+                  <stop offset="95%" stopColor="#6366f1" stopOpacity={0}/>
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+              <XAxis dataKey="fecha" axisLine={false} tickLine={false} tick={{fontSize: 10, fontWeight: 800}} />
+              <YAxis hide />
+              <Tooltip 
+                contentStyle={{borderRadius: '20px', border: 'none', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)'}}
+              />
+              <Area type="monotone" dataKey="monto" stroke="#6366f1" strokeWidth={4} fillOpacity={1} fill="url(#colorMonto)" />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
       </div>
 
-      {/* BANNER DE CONCILIACIÓN */}
-      <div className="bg-slate-900 rounded-[3.5rem] p-10 text-white relative overflow-hidden group shadow-2xl shadow-indigo-200/50">
-        <div className="relative z-10 flex flex-col lg:flex-row items-center gap-8">
-            <div className="w-24 h-24 bg-white/10 rounded-[2.2rem] flex items-center justify-center backdrop-blur-xl border border-white/10 shadow-2xl group-hover:scale-105 transition-transform duration-500">
-                <ShieldCheck size={48} className="text-indigo-400" />
-            </div>
-            <div className="flex-1 text-center lg:text-left">
-                <h4 className="text-2xl font-black italic uppercase tracking-tight">Conciliación de Seguridad</h4>
-                <p className="text-slate-400 text-sm mt-2 max-w-xl leading-relaxed font-medium">
-                    El sistema detecta discrepancias entre el monto pagado y la segmentación del usuario. Usa la "Auditoría" para exportar casos con alertas de pago insuficiente.
-                </p>
-            </div>
-            <button 
-                onClick={handleExcel}
-                className="bg-white text-slate-900 font-black px-10 py-5 rounded-2xl hover:bg-indigo-50 active:scale-95 transition-all uppercase text-[10px] tracking-widest flex items-center gap-3 shadow-xl"
-            >
-                {loading === 'excel' ? <Loader2 className="animate-spin" size={18} /> : <Download size={18} strokeWidth={3} />}
-                Descargar Auditoría
-            </button>
+      {/* SECCIÓN 3: ALERTA DE ACCIÓN ESTRATÉGICA */}
+      <div className="bg-amber-50 p-8 rounded-[3rem] border border-amber-100 flex flex-col md:flex-row items-center gap-8">
+        <div className="w-16 h-16 bg-amber-500 rounded-2xl flex items-center justify-center text-white shrink-0 shadow-lg shadow-amber-200">
+          <Zap size={30} fill="currentColor" />
         </div>
+        <div className="flex-1">
+          <h4 className="text-amber-900 font-black uppercase italic tracking-tight">Análisis de Brecha Crítica</h4>
+          <p className="text-amber-700 text-xs mt-1 leading-relaxed font-medium">
+            Para alcanzar la meta de <span className="font-black">${stats.metaRecaudo.toLocaleString()}</span>, se requiere un esfuerzo adicional de <span className="font-black">${stats.faltanteMeta.toLocaleString()}</span>. 
+            Actualmente tienes un capital en espera (pendientes) de <span className="font-black text-indigo-600">${stats.recaudoProyectado.toLocaleString()}</span>. 
+            Aprobando todos los pendientes, reducirías la brecha al <span className="font-black italic">{(((stats.faltanteMeta - stats.recaudoProyectado) / stats.metaRecaudo) * 100).toFixed(1)}%</span>.
+          </p>
+        </div>
+        <button className="bg-white text-amber-600 font-black px-8 py-4 rounded-xl text-[10px] uppercase tracking-widest shadow-sm hover:bg-amber-100 transition-all">
+          <a href="/admin/inscripciones" className="flex items-center gap-2">
+            Verificar Pendientes
+          </a>
+        </button>
       </div>
     </div>
   );
 }
 
-function ReportCard({ title, desc, icon, onExport, loading, color }: any) {
+// Icono auxiliar que faltaba
+function Users2(props: any) {
   return (
-    <div className={`bg-white p-10 rounded-[3.5rem] border border-slate-100 shadow-sm transition-all duration-500 group flex flex-col h-full ${color}`}>
-      <div className="w-20 h-20 bg-slate-50 rounded-[1.8rem] flex items-center justify-center mb-8 group-hover:scale-110 group-hover:rotate-3 transition-all duration-500 shadow-inner">
-        {icon}
-      </div>
-      <div className="flex-1">
-        <h3 className="font-black text-slate-900 uppercase italic text-lg tracking-tighter leading-none mb-3">
-            {title}
-        </h3>
-        <p className="text-[11px] font-bold text-slate-400 uppercase leading-relaxed tracking-tight">
-            {desc}
-        </p>
-      </div>
-      <button 
-        disabled={loading}
-        onClick={onExport}
-        className="w-full mt-10 flex items-center justify-center gap-3 bg-slate-900 text-white font-black py-5 rounded-[1.5rem] text-[10px] uppercase tracking-[0.2em] hover:bg-indigo-600 hover:shadow-xl hover:shadow-indigo-100 transition-all active:scale-[0.98] disabled:opacity-50"
-      >
-        {loading ? <Loader2 className="animate-spin" size={18}/> : <><Download size={18} strokeWidth={3}/> Descargar </>}
-      </button>
-    </div>
-  );
+    <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+  )
 }
