@@ -1,171 +1,106 @@
 "use client";
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { createClient } from "@/utils/supabase/clients";
 import { 
   Edit3, Trash2, ShieldCheck, Percent, 
-  BadgeDollarSign, Ban, Info, AlertTriangle 
+  BadgeDollarSign, Ban, Info, Loader2, AlertCircle 
 } from "lucide-react";
 
-export default function GestionarRoles({ roles, onEdit, onDelete }: any) {
+export default function GestionarRolesActivo({ onEdit }: any) {
   const supabase = createClient();
+  const [loading, setLoading] = useState(true);
+  const [roles, setRoles] = useState<any[]>([]);
+  const [eventoNombre, setEventoNombre] = useState("");
 
-  const eliminarRol = async (id: number) => {
-    // Implementación de una confirmación más estética o nativa
-    if (!confirm("¿Estás seguro de eliminar este perfil? Los usuarios que ya se inscribieron con este rol mantendrán su precio, pero nadie más podrá seleccionarlo.")) return;
-    
-    const { error } = await supabase.from("tipos_persona").delete().eq("id", id);
-    if (!error) {
-      onDelete();
-    } else {
-      console.error("Error al eliminar:", error.message);
+  const cargarDatosExclusivos = async () => {
+    setLoading(true);
+    try {
+      // 1. Obtener el evento que tiene el flag 'esta_activo'
+      const { data: evento, error: errEv } = await supabase
+        .from('eventos')
+        .select('id, nombre')
+        .eq('esta_activo', true)
+        .single();
+
+      if (errEv || !evento) throw new Error("No hay un evento activo configurado.");
+      setEventoNombre(evento.nombre);
+
+      // 2. Traer solo los roles vinculados a ese evento específico
+      const { data: rolesData, error: errRoles } = await supabase
+        .from('tipos_persona')
+        .select('*')
+        .eq('evento_id', evento.id)
+        .order('nombre', { ascending: true });
+
+      if (errRoles) throw errRoles;
+      setRoles(rolesData || []);
+    } catch (error: any) {
+      console.error("Error:", error.message);
+    } finally {
+      setLoading(false);
     }
   };
 
-  // Renderizador de etiquetas de método con lógica de color mejorada
-  const renderMetodoBadge = (metodo: string) => {
-    const configs: any = {
-      porcentaje: { 
-        bg: "bg-indigo-50 border-indigo-100", 
-        text: "text-indigo-700", 
-        icon: Percent, 
-        label: "Cálculo por %" 
-      },
-      fijo: { 
-        bg: "bg-emerald-50 border-emerald-100", 
-        text: "text-emerald-700", 
-        icon: BadgeDollarSign, 
-        label: "Precio Neto" 
-      },
-      ninguno: { 
-        bg: "bg-slate-100 border-slate-200", 
-        text: "text-slate-500", 
-        icon: Ban, 
-        label: "Tarifa Plena" 
-      },
-    };
+  useEffect(() => {
+    cargarDatosExclusivos();
+  }, []);
 
-    const active = configs[metodo] || configs.ninguno;
-    const Icon = active.icon;
-
-    return (
-      <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-xl border ${active.bg} ${active.text} transition-all`}>
-        <Icon size={12} strokeWidth={3} />
-        <span className="text-[10px] font-black uppercase tracking-tight">{active.label}</span>
-      </div>
-    );
-  };
+  if (loading) return (
+    <div className="p-20 flex flex-col items-center justify-center space-y-4">
+      <Loader2 className="animate-spin text-indigo-600" size={32} />
+      <p className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">Sincronizando evento activo...</p>
+    </div>
+  );
 
   return (
-    <div className="space-y-4 animate-in fade-in duration-700">
-      {/* INFO TOOLTIP */}
-      <div className="flex items-center gap-2 px-6 py-3 bg-amber-50 rounded-2xl border border-amber-100 text-amber-700">
-        <Info size={16} />
-        <p className="text-[10px] font-bold uppercase tracking-wide">
-          Los cambios aquí afectan directamente al motor de cálculo del formulario público.
-        </p>
+    <div className="space-y-6">
+      {/* Indicador de Contexto de Evento */}
+      <div className="flex items-center justify-between px-8 py-4 bg-indigo-600 rounded-[2rem] text-white shadow-lg shadow-indigo-200">
+        <div className="flex items-center gap-3">
+          <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse" />
+          <span className="text-[10px] font-black uppercase tracking-[0.2em]">Gestionando Evento:</span>
+          <span className="text-sm font-bold italic">{eventoNombre}</span>
+        </div>
+        <ShieldCheck size={20} className="opacity-50" />
       </div>
 
-      <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-xl shadow-slate-200/40 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="bg-slate-50/80">
-                <th className="p-6 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Estructura de Perfil</th>
-                <th className="p-6 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] text-center">Estrategia Activa</th>
-                <th className="p-6 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] text-center">Impacto Financiero</th>
-                <th className="p-6 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] text-right whitespace-nowrap">Gestión</th>
+      <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-xl overflow-hidden">
+        <table className="w-full text-left border-collapse">
+          <thead>
+            <tr className="bg-slate-50/50">
+              <th className="p-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Perfil Activo</th>
+              <th className="p-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Estrategia</th>
+              <th className="p-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Descuento</th>
+              <th className="p-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Acciones</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-50">
+            {roles.map((rol) => (
+              <tr key={rol.id} className="hover:bg-slate-50/50 transition-colors group">
+                <td className="p-6">
+                  <div className="flex items-center gap-4">
+                    <div className="w-3 h-10 rounded-full" style={{ backgroundColor: rol.color }} />
+                    <span className="font-black text-slate-900 uppercase italic text-sm">{rol.nombre}</span>
+                  </div>
+                </td>
+                <td className="p-6 text-center">
+                  <span className="text-[10px] font-bold px-3 py-1 bg-slate-100 rounded-full text-slate-500 uppercase">
+                    {rol.metodo_activo}
+                  </span>
+                </td>
+                <td className="p-6 text-center font-black text-indigo-600 italic">
+                  {rol.metodo_activo === 'porcentaje' ? `-${rol.descuento_porcentaje}%` : 
+                   rol.metodo_activo === 'fijo' ? `-$${rol.descuento_fijo.toLocaleString()}` : '0%'}
+                </td>
+                <td className="p-6 text-right">
+                  <button onClick={() => onEdit(rol)} className="p-2 text-slate-400 hover:text-indigo-600">
+                    <Edit3 size={18} />
+                  </button>
+                </td>
               </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-50">
-              {roles.map((rol: any) => (
-                <tr key={rol.id} className="hover:bg-indigo-50/20 transition-all group">
-                  {/* COLUMNA: NOMBRE Y COLOR */}
-                  <td className="p-6">
-                    <div className="flex items-center gap-4">
-                      <div 
-                        className="w-12 h-12 rounded-[1.2rem] flex items-center justify-center text-white shadow-lg transition-transform group-hover:scale-105"
-                        style={{ backgroundColor: rol.color || '#6366f1' }}
-                      >
-                        <ShieldCheck size={22} strokeWidth={2.5} />
-                      </div>
-                      <div>
-                        <span className="font-black text-slate-900 uppercase italic text-sm block leading-none mb-1">
-                          {rol.nombre}
-                        </span>
-                        <div className="flex items-center gap-2">
-                          <span className="px-2 py-0.5 bg-slate-100 rounded text-[9px] font-mono font-bold text-slate-500 uppercase">
-                            ID: {rol.valor}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  </td>
-                  
-                  {/* COLUMNA: MÉTODO */}
-                  <td className="p-6 text-center">
-                    {renderMetodoBadge(rol.metodo_activo)}
-                  </td>
-
-                  {/* COLUMNA: VALOR APLICADO */}
-                  <td className="p-6 text-center">
-                    <div className="flex flex-col items-center">
-                      {rol.metodo_activo === 'porcentaje' ? (
-                        <div className="flex flex-col items-center">
-                          <span className="text-indigo-600 font-black text-base italic">-{rol.descuento_porcentaje}%</span>
-                          <span className="text-[9px] font-bold text-slate-300 uppercase">Del precio base</span>
-                        </div>
-                      ) : rol.metodo_activo === 'fijo' ? (
-                        <div className="flex flex-col items-center">
-                          <span className="text-emerald-600 font-black text-base italic">-${rol.descuento_fijo.toLocaleString()}</span>
-                          <span className="text-[9px] font-bold text-slate-300 uppercase">Dcto. Directo</span>
-                        </div>
-                      ) : (
-                        <div className="flex flex-col items-center">
-                          <span className="text-slate-300 font-black text-base italic">100%</span>
-                          <span className="text-[9px] font-bold text-slate-300 uppercase">Sin descuento</span>
-                        </div>
-                      )}
-                    </div>
-                  </td>
-
-                  {/* COLUMNA: ACCIONES */}
-                  <td className="p-6 text-right whitespace-nowrap">
-                    <div className="flex justify-end gap-2">
-                      <button 
-                        onClick={() => onEdit(rol)}
-                        className="p-3 text-slate-400 hover:text-indigo-600 hover:bg-white hover:shadow-md rounded-2xl transition-all active:scale-90"
-                        title="Editar parámetros"
-                      >
-                        <Edit3 size={18} />
-                      </button>
-                      <button 
-                        onClick={() => eliminarRol(rol.id)}
-                        className="p-3 text-slate-400 hover:text-rose-600 hover:bg-white hover:shadow-md rounded-2xl transition-all active:scale-90"
-                        title="Eliminar perfil"
-                      >
-                        <Trash2 size={18} />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          
-          {roles.length === 0 && (
-            <div className="p-24 flex flex-col items-center justify-center space-y-4">
-              <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center text-slate-200">
-                <AlertTriangle size={32} />
-              </div>
-              <div className="text-center">
-                <p className="text-slate-900 font-black uppercase italic">Base de datos vacía</p>
-                <p className="text-slate-400 text-xs font-bold uppercase tracking-widest mt-1">
-                  Empieza creando un nuevo perfil para el evento.
-                </p>
-              </div>
-            </div>
-          )}
-        </div>
+            ))}
+          </tbody>
+        </table>
       </div>
     </div>
   );

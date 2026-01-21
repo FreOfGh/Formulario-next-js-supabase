@@ -1,123 +1,157 @@
 "use client";
-import React from "react";
-import { 
-  BarChart, Bar, XAxis, YAxis, ResponsiveContainer, 
-  Tooltip, Cell, CartesianGrid 
-} from "recharts";
-import { MapPin, Trophy, Globe, TrendingUp } from "lucide-react";
+import React, { useState, useEffect } from "react";
+import { createClient } from "@/utils/supabase/clients";
+import { BadgePercent, Users, HeartHandshake, TrendingDown, Sparkles, Loader2 } from "lucide-react";
 
-export default function JurisdiccionesAporte({ dataJurisdicciones }: { dataJurisdicciones?: any[] }) {
-  // Datos de respaldo por si no vienen props
-  const defaultData = [
-    { name: "Arquidiócesis de Cali", monto: 12450000, inscritos: 85, color: "#4f46e5" },
-    { name: "Diócesis de Bogotá", monto: 8900000, inscritos: 62, color: "#6366f1" },
-    { name: "Diócesis de Medellín", monto: 5200000, inscritos: 34, color: "#818cf8" },
-    { name: "Diócesis de Pasto", monto: 3100000, inscritos: 21, color: "#a5b4fc" },
-  ];
+export default function AnalisisDescuentos() {
+  const supabase = createClient();
+  const [loading, setLoading] = useState(true);
+  const [impacto, setImpacto] = useState<any[]>([]);
 
-  const data = dataJurisdicciones || defaultData;
+  useEffect(() => {
+    async function fetchImpactoSocial() {
+      try {
+        setLoading(true);
 
-  // Custom Tooltip para un look Premium
-  const CustomTooltip = ({ active, payload }: any) => {
-    if (active && payload && payload.length) {
-      return (
-        <div className="bg-slate-900 p-4 rounded-2xl shadow-2xl border border-slate-800">
-          <p className="text-[10px] font-black uppercase text-indigo-400 mb-1">{payload[0].payload.name}</p>
-          <p className="text-lg font-black text-white italic">
-            ${payload[0].value.toLocaleString()}
-          </p>
-          <p className="text-[9px] font-bold text-slate-400 uppercase mt-1">
-            Recaudación Total
-          </p>
-        </div>
-      );
+        // 1. Obtener Evento Activo y su Configuración
+        const { data: evento } = await supabase
+          .from('eventos')
+          .select('id, configuracion_evento(modo_precio, precio_global_base, metodo_descuento)')
+          .eq('esta_activo', true)
+          .single();
+
+        if (!evento) return;
+
+        // 2. Traer Tipos de Persona y sus Inscritos
+        // Usamos una consulta que cuente inscripciones por segmento
+        const [tiposRes, inscritosRes] = await Promise.all([
+          supabase.from('tipos_persona').select('*').eq('evento_id', evento.id),
+          supabase.from('inscripciones').select('segmentacion, precio_pactado').eq('evento_id', evento.id)
+        ]);
+
+        const tipos = tiposRes.data || [];
+        const inscritos = inscritosRes.data || [];
+        const config = evento.configuracion_evento as any;
+
+        // 3. Calcular el impacto por cada tipo (solo si tienen descuento)
+        const analisis = tipos
+          .filter(tipo => (tipo.descuento_porcentaje > 0 || tipo.descuento_fijo > 0))
+          .map((tipo, index) => {
+            const inscritosDeEsteTipo = inscritos.filter(i => i.segmentacion === tipo.valor);
+            const cantidad = inscritosDeEsteTipo.length;
+            
+            // Calculamos el ahorro unitario
+            let ahorroUnitario = 0;
+            const precioBase = config.precio_global_base || 0;
+
+            if (config.metodo_descuento === 'porcentaje') {
+              ahorroUnitario = (precioBase * (tipo.descuento_porcentaje || 0)) / 100;
+            } else {
+              ahorroUnitario = tipo.descuento_fijo || 0;
+            }
+
+            const ahorroTotal = ahorroUnitario * cantidad;
+
+            return {
+              rol: tipo.nombre,
+              ahorro: ahorroTotal > 0 ? `$${(ahorroTotal / 1000000).toFixed(1)}M` : "$0",
+              rawAhorro: ahorroTotal,
+              inscritos: cantidad,
+              color: index % 2 === 0 ? "bg-indigo-600" : "bg-slate-900",
+              shadow: index % 2 === 0 ? "shadow-indigo-200" : "shadow-slate-300"
+            };
+          })
+          .sort((a, b) => b.rawAhorro - a.rawAhorro); // Ordenar por mayor impacto
+
+        setImpacto(analisis);
+      } catch (error) {
+        console.error("Error calculando impacto:", error);
+      } finally {
+        setLoading(false);
+      }
     }
-    return null;
-  };
+
+    fetchImpactoSocial();
+  }, []);
+
+  if (loading) return (
+    <div className="h-48 flex items-center justify-center text-slate-400">
+      <Loader2 className="animate-spin mr-2" /> Analizando subsidios y beneficios...
+    </div>
+  );
 
   return (
-    <div className="space-y-8 animate-in fade-in slide-in-from-right-8 duration-1000">
-      {/* HEADER CON INDICADORES */}
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 px-2">
+    <div className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-700">
+      {/* TÍTULO */}
+      <div className="flex items-center justify-between">
         <div>
-          <div className="flex items-center gap-2 mb-2">
-            <Globe size={16} className="text-indigo-600" />
-            <span className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">Geografía de Inscritos</span>
+          <div className="flex items-center gap-2 mb-1">
+            <HeartHandshake size={14} className="text-rose-500" />
+            <span className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">Responsabilidad Social</span>
           </div>
           <h2 className="text-4xl font-black text-slate-900 uppercase italic tracking-tighter leading-none">
-            Top Jurisdicciones
+            Impacto Social
           </h2>
-          <p className="text-slate-500 text-sm mt-2 font-medium italic">Liderazgo regional por recaudación neta acumulada.</p>
         </div>
-        
-        <div className="flex gap-2">
-            <div className="bg-indigo-50 px-4 py-2 rounded-xl border border-indigo-100 flex items-center gap-2">
-                <Trophy size={14} className="text-indigo-600" />
-                <span className="text-[10px] font-black uppercase text-indigo-700">Líder: {data[0].name}</span>
-            </div>
+        <div className="hidden md:block">
+           <div className="bg-emerald-50 text-emerald-600 px-4 py-2 rounded-2xl border border-emerald-100 flex items-center gap-2">
+              <TrendingDown size={14} strokeWidth={3} />
+              <span className="text-[10px] font-black uppercase">Subsidios Aplicados</span>
+           </div>
         </div>
       </div>
 
-      <div className="bg-white p-8 md:p-12 rounded-[3.5rem] border border-slate-100 shadow-2xl shadow-slate-200/50 relative overflow-hidden group">
-        
-        {/* Gráfico */}
-        <div className="h-96 w-full relative z-10">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart 
-              data={data} 
-              layout="vertical" 
-              margin={{ left: 40, right: 60, top: 20, bottom: 20 }}
-            >
-              <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f1f5f9" />
-              <XAxis type="number" hide />
-              <YAxis 
-                dataKey="name" 
-                type="category" 
-                axisLine={false} 
-                tickLine={false} 
-                tick={{fontSize: 11, fontWeight: 900, fill: '#1e293b', width: 200}} 
-                width={160}
-              />
-              <Tooltip content={<CustomTooltip />} cursor={{fill: 'transparent'}} />
-              <Bar 
-                dataKey="monto" 
-                radius={[0, 20, 20, 0]} 
-                barSize={32}
-              >
-                {data.map((entry, index) => (
-                  <Cell 
-                    key={`cell-${index}`} 
-                    fill={entry.color || '#4f46e5'} 
-                    className="hover:opacity-80 transition-opacity cursor-pointer"
-                  />
-                ))}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
+      {/* GRID DE IMPACTO DINÁMICO */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+        {impacto.length > 0 ? impacto.map((i) => (
+          <div 
+            key={i.rol} 
+            className={`${i.color} p-10 rounded-[3.5rem] text-white flex justify-between items-center shadow-2xl ${i.shadow} relative overflow-hidden group hover:scale-[1.02] transition-transform duration-500`}
+          >
+            <div className="absolute -right-4 -top-4 bg-white/10 w-24 h-24 rounded-full blur-2xl"></div>
+            
+            <div className="relative z-10">
+              <div className="flex items-center gap-2 mb-4">
+                <Sparkles size={12} className="text-amber-400" />
+                <p className="text-[10px] font-black uppercase text-white/60 tracking-[0.2em]">{i.rol}</p>
+              </div>
+              <h4 className="text-5xl font-black italic tracking-tighter leading-none">{i.ahorro}</h4>
+              <div className="mt-6 flex flex-col">
+                <span className="text-[10px] font-black text-white/40 uppercase tracking-widest">Ahorro Generado</span>
+                <span className="text-xs font-bold text-white/80">Inversión Social</span>
+              </div>
+            </div>
 
-        {/* Decoración de fondo */}
-        <div className="absolute top-0 right-0 p-10 opacity-[0.03] pointer-events-none group-hover:scale-110 transition-transform duration-700">
-            <MapPin size={240} strokeWidth={1} />
-        </div>
+            <div className="relative z-10 text-right flex flex-col items-end">
+              <div className="w-16 h-16 bg-white/10 rounded-3xl flex items-center justify-center backdrop-blur-md mb-6 border border-white/20">
+                <BadgePercent size={32} className="text-white opacity-90" />
+              </div>
+              <div className="flex flex-col items-end">
+                <div className="text-3xl font-black">{i.inscritos}</div>
+                <div className="flex items-center gap-1 text-[10px] font-black text-white/50 uppercase tracking-tighter mt-1">
+                  <Users size={10} /> Beneficiarios
+                </div>
+              </div>
+            </div>
+          </div>
+        )) : (
+          <div className="col-span-2 p-12 text-center bg-slate-50 rounded-[3rem] border border-dashed border-slate-300 text-slate-400 font-bold uppercase text-xs">
+            No se han aplicado descuentos en este evento aún
+          </div>
+        )}
       </div>
 
-      {/* FOOTER ANALÍTICO */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {data.slice(0, 3).map((item, idx) => (
-            <div key={item.name} className="bg-slate-50 p-6 rounded-[2rem] border border-slate-100 flex items-center justify-between group hover:bg-white hover:shadow-lg transition-all">
-                <div>
-                    <p className="text-[9px] font-black text-slate-400 uppercase mb-1">Puesto #{idx + 1}</p>
-                    <p className="text-sm font-black text-slate-800 uppercase italic leading-none">{item.name.split(' ').pop()}</p>
-                </div>
-                <div className="text-right">
-                    <p className="text-xs font-black text-indigo-600">${(item.monto / 1000000).toFixed(1)}M</p>
-                    <div className="flex items-center gap-1 justify-end text-[9px] font-bold text-slate-400 uppercase">
-                        <TrendingUp size={10} /> {item.inscritos} Pax
-                    </div>
-                </div>
+      {/* BANNER DE RESUMEN FINAL */}
+      <div className="p-8 bg-slate-50 rounded-[3rem] border border-slate-200/50 border-dashed flex flex-col md:flex-row items-center justify-between gap-6">
+        <div className="flex items-center gap-4">
+            <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-sm text-indigo-600">
+                <HeartHandshake size={24} />
             </div>
-        ))}
+            <div>
+                <p className="text-sm font-bold text-slate-800">Compromiso con la Formación</p>
+                <p className="text-[11px] text-slate-500 font-medium">Cálculo basado en la diferencia entre el precio base y el precio pactado por rol.</p>
+            </div>
+        </div>
       </div>
     </div>
   );

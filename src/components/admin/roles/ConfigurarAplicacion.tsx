@@ -1,100 +1,117 @@
 "use client";
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { createClient } from "@/utils/supabase/clients";
 import { 
   Settings2, Percent, BadgeDollarSign, Ban, 
-  Loader2, Sparkles, Check, ShieldAlert 
+  Loader2, Sparkles, Check, ShieldAlert, Target
 } from "lucide-react";
 
-export default function ConfigurarAplicacion({ roles, onUpdate }: any) {
+export default function ConfigurarReglasActivas() {
   const supabase = createClient();
+  const [loading, setLoading] = useState(true);
+  const [roles, setRoles] = useState<any[]>([]);
+  const [eventoActivo, setEventoActivo] = useState<any>(null);
   const [loadingId, setLoadingId] = useState<number | null>(null);
   const [lastUpdated, setLastUpdated] = useState<number | null>(null);
+
+  // 1. Carga inicial: Solo evento activo y sus roles asociados
+  useEffect(() => {
+    async function initConfig() {
+      setLoading(true);
+      const { data: evento } = await supabase
+        .from("eventos")
+        .select("id, nombre")
+        .eq("esta_activo", true)
+        .single();
+
+      if (evento) {
+        setEventoActivo(evento);
+        const { data: rolesData } = await supabase
+          .from("tipos_persona")
+          .select("*")
+          .eq("evento_id", evento.id)
+          .order("nombre", { ascending: true });
+        
+        setRoles(rolesData || []);
+      }
+      setLoading(false);
+    }
+    initConfig();
+  }, [supabase]);
 
   const cambiarMetodo = async (id: number, nuevoMetodo: string) => {
     setLoadingId(id);
     const { error } = await supabase
       .from("tipos_persona")
       .update({ metodo_activo: nuevoMetodo })
-      .eq("id", id);
+      .eq("id", id)
+      .eq("evento_id", eventoActivo.id); // Doble validación de seguridad
     
     if (!error) {
+      setRoles(roles.map(r => r.id === id ? { ...r, metodo_activo: nuevoMetodo } : r));
       setLastUpdated(id);
-      onUpdate();
-      // Limpiar el estado de "éxito" después de 2 segundos
       setTimeout(() => setLastUpdated(null), 2000);
-    } else {
-      alert("Error al actualizar la regla: " + error.message);
     }
     setLoadingId(null);
   };
 
+  if (loading) return (
+    <div className="h-96 flex flex-col items-center justify-center space-y-4">
+      <Loader2 className="animate-spin text-indigo-600" size={40} />
+      <p className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">Sincronizando reglas del evento...</p>
+    </div>
+  );
+
   return (
-    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
-      {/* HEADER ESTRATÉGICO */}
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+    <div className="space-y-8 animate-in fade-in duration-700">
+      {/* HEADER DE CONTEXTO ACTIVO */}
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-slate-100 pb-8">
         <div>
-          <div className="flex items-center gap-2 mb-1">
-            <Sparkles size={14} className="text-amber-500" />
-            <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
-              Motor de Precios Dinámicos
-            </span>
+          <div className="flex items-center gap-2 mb-2">
+            <Target size={16} className="text-indigo-600" />
+            <span className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">Motor de Precios Dinámicos</span>
           </div>
-          <h2 className="text-3xl font-black text-slate-900 uppercase italic leading-none">
-            Reglas de Aplicación
+          <h2 className="text-4xl font-black text-slate-900 uppercase italic leading-none tracking-tighter">
+            Reglas: <span className="text-indigo-600">{eventoActivo?.nombre || 'Sin Evento'}</span>
           </h2>
-          <p className="text-slate-500 text-sm mt-2 font-medium">
-            Define la jerarquía de cobro para los asistentes del <span className="text-indigo-600 font-bold">evento actual</span>.
-          </p>
+        </div>
+        <div className="flex items-center gap-2 bg-emerald-50 px-4 py-2 rounded-full border border-emerald-100">
+            <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
+            <span className="text-[10px] font-black uppercase text-emerald-700 tracking-widest">Sincronizado en Vivo</span>
         </div>
       </div>
 
       {/* MATRIZ DE CONFIGURACIÓN */}
-      <div className="bg-white rounded-[3rem] border border-slate-100 shadow-xl shadow-slate-200/50 overflow-hidden">
-        <div className="p-8 border-b border-slate-50 bg-slate-50/50 flex justify-between items-center">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center text-white">
-              <Settings2 size={16} />
-            </div>
-            <span className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500">Configuración por Perfil</span>
-          </div>
-        </div>
-
+      <div className="bg-white rounded-[3.5rem] border border-slate-100 shadow-2xl shadow-slate-200/40 overflow-hidden">
         <div className="divide-y divide-slate-100">
           {roles.map((rol: any) => (
-            <div key={rol.id} className="p-8 flex flex-col lg:flex-row lg:items-center justify-between gap-6 hover:bg-slate-50/50 transition-all group">
-              <div className="flex items-center gap-5">
+            <div key={rol.id} className="p-10 flex flex-col lg:flex-row lg:items-center justify-between gap-8 hover:bg-slate-50/50 transition-all group">
+              <div className="flex items-center gap-6">
                 <div 
-                  className="w-14 h-14 rounded-[1.5rem] flex items-center justify-center text-white shadow-inner relative group-hover:scale-110 transition-transform duration-500" 
+                  className="w-16 h-16 rounded-[2rem] flex items-center justify-center text-white shadow-lg relative transition-transform duration-500 group-hover:rotate-6" 
                   style={{ backgroundColor: rol.color || '#6366f1' }}
                 >
-                  <span className="font-black text-xl">{rol.nombre.charAt(0)}</span>
+                  <span className="font-black text-2xl">{rol.nombre.charAt(0)}</span>
                   {lastUpdated === rol.id && (
-                    <div className="absolute -top-1 -right-1 bg-emerald-500 text-white rounded-full p-1 animate-bounce">
-                      <Check size={12} strokeWidth={4} />
+                    <div className="absolute -top-2 -right-2 bg-emerald-500 text-white rounded-full p-1.5 shadow-lg border-4 border-white">
+                      <Check size={14} strokeWidth={4} />
                     </div>
                   )}
                 </div>
                 <div>
-                  <h4 className="font-black text-slate-800 uppercase text-lg tracking-tighter">{rol.nombre}</h4>
-                  <div className="flex items-center gap-2 mt-1">
-                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Estado:</span>
-                    <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded ${
-                      rol.metodo_activo === 'ninguno' ? 'bg-slate-100 text-slate-500' : 'bg-indigo-50 text-indigo-600'
-                    }`}>
-                      {rol.metodo_activo === 'porcentaje' ? 'Basado en %' : 
-                       rol.metodo_activo === 'fijo' ? 'Precio Neto' : 'Tarifa Plena'}
-                    </span>
-                  </div>
+                  <h4 className="font-black text-slate-900 uppercase text-xl tracking-tighter">{rol.nombre}</h4>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] mt-1">
+                    ID Referencia: <span className="font-mono">{rol.valor}</span>
+                  </p>
                 </div>
               </div>
 
-              {/* SELECTOR TIPO SWITCH MODERNO */}
-              <div className="flex bg-slate-100 p-1.5 rounded-[2rem] gap-1 self-start lg:self-center border border-slate-200/50 shadow-inner">
+              {/* SELECTOR DE MÉTODOS */}
+              <div className="flex bg-slate-100 p-2 rounded-[2.5rem] gap-2 border border-slate-200/50 shadow-inner">
                 {[
-                  { id: 'porcentaje', icon: Percent, label: 'Descuento %' },
-                  { id: 'fijo', icon: BadgeDollarSign, label: 'Valor Fijo' },
-                  { id: 'ninguno', icon: Ban, label: 'Sin Rebaja' }
+                  { id: 'porcentaje', icon: Percent, label: 'Dcto %' },
+                  { id: 'fijo', icon: BadgeDollarSign, label: 'Neto' },
+                  { id: 'ninguno', icon: Ban, label: 'Plena' }
                 ].map((metodo) => {
                   const isActive = rol.metodo_activo === metodo.id;
                   return (
@@ -103,20 +120,19 @@ export default function ConfigurarAplicacion({ roles, onUpdate }: any) {
                       onClick={() => cambiarMetodo(rol.id, metodo.id)}
                       disabled={loadingId === rol.id}
                       className={`
-                        flex items-center gap-2 px-6 py-3 rounded-[1.5rem] text-[10px] font-black uppercase transition-all duration-300
+                        flex items-center gap-3 px-8 py-4 rounded-[2rem] text-[11px] font-black uppercase transition-all duration-500
                         ${isActive 
-                          ? 'bg-white text-indigo-600 shadow-md transform scale-105' 
-                          : 'text-slate-400 hover:text-slate-600 hover:bg-white/50'
+                          ? 'bg-white text-indigo-600 shadow-xl scale-105' 
+                          : 'text-slate-400 hover:text-slate-600 hover:bg-white/40'
                         }
-                        ${loadingId === rol.id && !isActive ? 'opacity-50 cursor-not-allowed' : ''}
                       `}
                     >
                       {loadingId === rol.id && isActive ? (
-                        <Loader2 size={14} className="animate-spin" />
+                        <Loader2 size={16} className="animate-spin" />
                       ) : (
-                        <metodo.icon size={14} strokeWidth={isActive ? 3 : 2} />
+                        <metodo.icon size={16} strokeWidth={isActive ? 3 : 2} />
                       )}
-                      <span className="hidden sm:inline">{metodo.label}</span>
+                      <span>{metodo.label}</span>
                     </button>
                   );
                 })}
@@ -126,31 +142,17 @@ export default function ConfigurarAplicacion({ roles, onUpdate }: any) {
         </div>
       </div>
 
-      {/* INFO BOX DINÁMICO */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div className="p-8 bg-indigo-900 rounded-[2.5rem] text-white flex gap-5 items-start shadow-xl shadow-indigo-100">
-          <div className="w-12 h-12 bg-white/10 rounded-2xl flex items-center justify-center shrink-0 backdrop-blur-sm">
-            <Settings2 className="text-indigo-300" size={24} />
-          </div>
-          <div className="space-y-2">
-            <p className="font-black text-[11px] uppercase tracking-widest text-indigo-300">Impacto en Formulario</p>
-            <p className="text-xs text-indigo-100 leading-relaxed font-medium">
-              Al activar un método, el sistema prioriza esa lógica sobre las demás. 
-              <b> Porcentajes</b> se calculan sobre el precio base, mientras que <b>Valor Fijo</b> establece un precio único ignorando el base.
-            </p>
-          </div>
+      {/* FOOTER DE ADVERTENCIA */}
+      <div className="p-8 bg-amber-50 rounded-[3rem] border-2 border-amber-100/50 flex flex-col md:flex-row gap-6 items-center">
+        <div className="w-14 h-14 bg-amber-500 rounded-2xl flex items-center justify-center text-white shrink-0 shadow-xl shadow-amber-200">
+          <ShieldAlert size={28} />
         </div>
-
-        <div className="p-8 bg-amber-50 rounded-[2.5rem] border-2 border-amber-100 flex gap-5 items-start">
-          <div className="w-12 h-12 bg-amber-500 rounded-2xl flex items-center justify-center text-white shrink-0 shadow-lg shadow-amber-200">
-            <ShieldAlert size={24} />
-          </div>
-          <div className="space-y-2">
-            <p className="font-black text-[11px] uppercase tracking-widest text-amber-600">Advertencia de Cambios</p>
-            <p className="text-xs text-amber-800 leading-relaxed font-medium">
-              Los cambios son instantáneos. Si hay usuarios navegando en el formulario de inscripción, verán los nuevos precios al recargar o avanzar de sección.
-            </p>
-          </div>
+        <div className="text-center md:text-left">
+          <p className="font-black text-[12px] uppercase tracking-widest text-amber-700 mb-1">Cambios Globales en Tiempo Real</p>
+          <p className="text-xs text-amber-800/80 font-medium max-w-2xl leading-relaxed">
+            Modificar el método de cálculo aquí afectará a todos los inscritos que aún no han realizado su pago. 
+            Asegúrate de comunicar cambios drásticos en la política de precios a través de tus canales oficiales.
+          </p>
         </div>
       </div>
     </div>
