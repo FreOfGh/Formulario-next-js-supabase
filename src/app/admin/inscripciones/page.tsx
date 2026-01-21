@@ -114,10 +114,10 @@ export default function InscripcionesPage() {
             </div>
           ) : (
             <div className="animate-in fade-in slide-in-from-bottom-2 duration-500">
-              {activeTab === "resumen" && <ResumenInscripciones data={datosFiltrados} />}
-              {activeTab === "diocesis" && <InscripcionesPorDiocesis data={datosFiltrados} />}
-              {activeTab === "rol" && <InscripcionesPorRol data={datosFiltrados} />}
-              {activeTab === "gestion" && <AprobarRechazar data={datosFiltrados} onUpdate={fetchInscritos} />}
+              {activeTab === "resumen" && <ResumenInscripciones />}
+              {activeTab === "diocesis" && <InscripcionesPorDiocesis />}
+              {activeTab === "rol" && <InscripcionesPorRol />}
+              {activeTab === "gestion" && <AprobarRechazar />}
             </div>
           )}
         </main>

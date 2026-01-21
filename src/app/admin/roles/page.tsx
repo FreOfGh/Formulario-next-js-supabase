@@ -54,13 +54,13 @@ export default function RolesPage() {
         <aside className="w-full md:w-72 bg-white border-r border-slate-100 p-6 flex flex-col gap-8">
           
           <div className="space-y-2">
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-4 mb-4">Gestión de Perfiles</p>
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-4 mb-4">Gestión de Roles</p>
             <nav className="space-y-1">
               {[
                 { id: "resumen", label: "Resumen", icon: BarChart3 },
                 { id: "nuevo", label: rolEditando ? "Editar Rol" : "Añadir Rol", icon: UserPlus2 },
-                { id: "gestion", label: "Gestionar", icon: Settings2 },
-{ id: "config_metodo", label: "Reglas de Aplicación", icon: Settings2 },              ].map((item) => (
+                { id: "gestion", label: "Gestionar roles", icon: Settings2 },
+{ id: "config_metodo", label: "Configuración de roles", icon: Settings2 },              ].map((item) => (
                 <button 
                   key={item.id}
                   onClick={() => {
@@ -100,10 +100,10 @@ export default function RolesPage() {
           ) : (
             <div className="animate-in fade-in slide-in-from-bottom-2 duration-500">
               {activeTab === "resumen" && (
-                <ResumenRoles roles={roles} />
+                <ResumenRoles />
               )}
               {activeTab === "config_metodo" && (
-  <ConfigurarAplicacion roles={roles} onUpdate={fetchRoles} />
+  <ConfigurarAplicacion/>
 )}
               {activeTab === "nuevo" && (
                 <FormularioRol 

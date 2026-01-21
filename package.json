@@ -24,9 +24,11 @@
     "react-confetti": "^6.4.0",
     "react-dom": "19.2.3",
     "react-hook-form": "^7.69.0",
+    "react-tsparticles": "^2.12.2",
     "recharts": "^3.6.0",
     "sonner": "^2.0.7",
     "tailwind-merge": "^3.4.0",
+    "tsparticles": "^3.9.1",
     "xlsx": "^0.18.5",
     "zod": "^4.2.1"
   },

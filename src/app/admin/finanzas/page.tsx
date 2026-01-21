@@ -86,7 +86,7 @@ export default function FinanzasPage() {
               {activeTab === "descuentos" && <AnalisisDescuentos />}
               {activeTab === "jurisdicciones" && <JurisdiccionesAporte />}
               {activeTab === "rechazados" && <ListadoRechazados />}
-              {activeTab === "reportes" && <ExportarReportes data={[]} />}
+              {activeTab === "reportes" && <ExportarReportes  />}
               {activeTab === "config" && <ConfigurarMetas />}
            </div>
         </main>

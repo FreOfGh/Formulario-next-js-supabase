@@ -124,7 +124,7 @@ export default function ResumenEventoActual() {
 
   const processStats = async (evento: Evento, inscripciones: any[]): Promise<Estadisticas> => {
     const totalRecaudado = inscripciones.reduce((acc, curr) => 
-      acc + Number(curr.monto_pagado || curr.precio_pagado || 0), 0);
+      acc + Number(curr.monto_pagado || 0 || 0), 0);
     
     const meta = Number(evento.meta_recaudacion) || 1;
     const totalInscritos = inscripciones.length;

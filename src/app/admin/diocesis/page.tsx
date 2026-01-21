@@ -78,7 +78,7 @@ export default function JurisdiccionesPage() {
           <div className="h-full flex items-center justify-center"><Loader2 className="animate-spin text-indigo-500" /></div>
         ) : (
           <div className="max-w-4xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-500">
-            {activeTab === "resumen" && <ListadoDiocesis data={diocesis} onEdit={handleEdit} onRefresh={fetchDiocesis} />}
+            {activeTab === "resumen" && <ListadoDiocesis data={diocesis} onEdit={handleEdit} />}
             {activeTab === "agregar" && <FormDiocesis initialData={editingItem} onRefresh={fetchDiocesis} onSuccess={() => setActiveTab("resumen")} />}
             {activeTab === "config" && <ConfigGlobal />}
             {activeTab === "mensaje" && <EnviarMensajeSede data={diocesis} />}

@@ -41,6 +41,7 @@ type ConfiguracionEvento = {
 };
 
 interface Props {
+  data: any[];
   onEdit: (item: Jurisdiccion) => void;
   refreshKey?: number;
   modoPrecio?: 'individual' | 'global';
@@ -48,6 +49,7 @@ interface Props {
 }
 
 export default function ListadoDiocesis({ 
+  data,
   onEdit, 
   refreshKey = 0, 
   modoPrecio,
