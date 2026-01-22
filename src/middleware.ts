@@ -45,7 +45,7 @@ export async function middleware(request: NextRequest) {
 
   // 2. Si hay usuario y trata de entrar a /login -> va a /admin
   if (isLoginPage && user) {
-    return NextResponse.redirect(new URL("/admin", request.url));
+    return NextResponse.redirect(new URL("/admin/dashboard", request.url));
   }
 
   return response;
