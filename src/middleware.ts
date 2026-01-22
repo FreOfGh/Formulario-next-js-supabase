@@ -35,7 +35,7 @@ export async function middleware(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser();
 
   // Lógica de rutas
-  const isDashboardPage = request.nextUrl.pathname.startsWith("/admin");
+  const isDashboardPage = request.nextUrl.pathname.startsWith("/admin/dashboard");
   const isLoginPage = request.nextUrl.pathname === "/login";
 
   // 1. Si no hay usuario y trata de entrar a /admin -> va a /login
